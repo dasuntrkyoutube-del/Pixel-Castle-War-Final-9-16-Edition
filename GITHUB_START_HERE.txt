@@ -1,0 +1,17 @@
+PIXEL CASTLE WAR - GitHub Actions Instructions
+
+1. Extract ZIP, upload ALL contents (including hidden .github folder) to your PRIVATE repo.
+2. Go to YouTube Studio > Create > Go Live > Stream, create Unlisted test.
+3. Copy Stream Key (keep it SECRET) and watch URL's v= VIDEO ID.
+4. GitHub repo > Settings > Secrets and variables > Actions > New repository secret:
+   YOUTUBE_STREAM_KEY = copied YouTube stream key
+   YOUTUBE_VIDEO_ID = video ID from YouTube watch URL (NOT stream key)
+5. GitHub repo > Actions > Pixel Castle War YouTube Live > Run workflow.
+6. Wait ~2 minutes; check YouTube Studio Stream preview and click Go live if asked.
+7. Test chat: !red then !fire ; other account: !blue then !lightning.
+8. Stop stream with GitHub Actions > active run > Cancel workflow, then End Stream on YouTube.
+
+LIMITATIONS: Github-hosted runners stop at 6 hours maximum; this workflow stops in ~5h35m.
+It is NOT unlimited 24/7. GitHub Action minutes/billing may apply, and runtime
+compatibility/chat connectivity require a live test. Keep repo private and
+never paste keys into public files or messages.

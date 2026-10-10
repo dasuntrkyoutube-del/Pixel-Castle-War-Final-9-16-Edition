@@ -1,0 +1,4 @@
+FIXED: NameError projectiles not defined.
+Added visible flying attack projectiles and impact-only explosions for !attack and !bomb.
+Projectiles and blast animations clear each round.
+Tested: Python syntax compilation. Pygame runtime test not available in this environment.

@@ -1,0 +1,52 @@
+name: Pixel Castle War YouTube Live
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: castle-war-youtube
+  cancel-in-progress: false
+
+jobs:
+  broadcast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+      YOUTUBE_VIDEO_ID: ${{ secrets.YOUTUBE_VIDEO_ID }}
+      DISPLAY: ':99'
+      SDL_AUDIODRIVER: pulse
+      PULSE_SERVER: unix:/tmp/pulse-castle/native
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install video and audio packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg xvfb pulseaudio
+          python -m pip install -r requirements.txt
+      - name: Start vertical Full HD broadcast
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$YOUTUBE_STREAM_KEY" || { echo 'Missing YOUTUBE_STREAM_KEY secret'; exit 1; }
+          test -n "$YOUTUBE_VIDEO_ID" || { echo 'Missing YOUTUBE_VIDEO_ID secret'; exit 1; }
+          Xvfb :99 -screen 0 720x1280x24 -nolisten tcp &
+          sleep 3
+          mkdir -p /tmp/pulse-castle
+          pulseaudio --daemonize=yes --exit-idle-time=-1 --disallow-exit --log-target=stderr             --load='module-native-protocol-unix socket=/tmp/pulse-castle/native auth-anonymous=1'             --load='module-null-sink sink_name=castle sink_properties=device.description=Castle'             --load='module-default-device-restore' || true
+          sleep 2
+          pactl -s "$PULSE_SERVER" set-default-sink castle
+          python -u main.py > game.log 2>&1 &
+          GAME_PID=$!
+          trap 'kill "$GAME_PID" 2>/dev/null || true; tail -n 60 game.log || true' EXIT
+          sleep 8
+          if ! kill -0 "$GAME_PID" 2>/dev/null; then tail -n 100 game.log; exit 1; fi
+          ffmpeg -hide_banner -loglevel warning -stats -nostdin             -thread_queue_size 512 -f x11grab -framerate 30 -video_size 720x1280 -i :99.0+0,0             -thread_queue_size 512 -f pulse -i castle.monitor             -filter:v 'scale=1080:1920:flags=neighbor,format=yuv420p'             -c:v libx264 -preset veryfast -tune zerolatency -r 30             -b:v 6000k -maxrate 6000k -bufsize 12000k -g 60 -keyint_min 60             -c:a aac -b:a 128k -ar 44100 -ac 2             -t 05:35:00 -f flv             "rtmps://a.rtmps.youtube.com/live2/$YOUTUBE_STREAM_KEY"

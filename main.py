@@ -97,14 +97,27 @@ class Game:
   if not isinstance(cmd,str):return
   parts=cmd.lower().strip().split();cmd=parts[0] if parts else ''
   # Accept both simple chat words and commands beginning with '!'.
-  aliases={'red':'!red','blue':'!blue','attack':'!attack','defend':'!defend','heal':'!heal','fire':'!fire','lightning':'!lightning','magic':'!magic','spawn':'!spawn','bomb':'!bomb','boom':'!bomb','!boom':'!bomb','help':'!help'}
+  aliases={'red':'!red','blue':'!blue','attack':'!attack','defend':'!defend','heal':'!heal','fire':'!fire','lightning':'!lightning','magic':'!magic','bomb':'!bomb','boom':'!bomb','!boom':'!bomb','help':'!help'}
   cmd=aliases.get(cmd,cmd)
-  if cmd not in ('!red','!blue','!attack','!defend','!heal','!fire','!lightning','!magic','!spawn','!bomb','!help'):return
+  if cmd not in ('!red','!blue','!attack','!defend','!heal','!fire','!lightning','!magic','!bomb','!help'):return
   now=time.monotonic(); key=user.lower()
   if user not in ('NPC','SYSTEM'):
    self.last_viewer=now
   if cmd in ('!red','!blue'):
-   team=cmd[1:];self.users[key]=(user[:18],team);self.latest.appendleft((user,f'joined {team.upper()} team',team));return
+   team=cmd[1:]
+   self.users[key]=(user[:18],team)
+   # Every RED / BLUE message directly spawns its own team wizard.
+   # A short per-viewer cooldown prevents comment spam.
+   if now-self.last_user_action.get(key,-999)<1.2:return
+   self.last_user_action[key]=now
+   active=sum(u.team==team and u.hp>0 for u in self.units)
+   if self.phase=='battle' and active<16:
+    self.units.append(Fighter(team,user[:18]))
+    self.scores[key]+=3
+    self.latest.appendleft((user,f'{team.upper()} WIZARD!',team))
+   else:
+    self.latest.appendleft((user,f'joined {team.upper()} team',team))
+   return
   if cmd=='!help':return
   if self.phase!='battle':return
   if key not in self.users:
@@ -112,7 +125,7 @@ class Game:
   if now-self.last_user_action.get(key,-999)<1.2:return
   self.last_user_action[key]=now
   display,team=self.users[key];enemy='blue' if team=='red' else 'red'
-  if cmd in ('!spawn','!fire','!lightning','!magic'):
+  if cmd in ('!fire','!lightning','!magic'):
    typ={'!fire':'fire','!lightning':'lightning','!magic':'arcane'}.get(cmd)
    count=sum(u.team==team and u.hp>0 for u in self.units)
    if count<16:self.units.append(Fighter(team,display,typ));self.scores[key]+=3
@@ -150,7 +163,7 @@ class Game:
      received=0
      while state['running'] and chat.is_alive():
       batch=chat.get()
-      for item in batch.sync():
+      for item in batch.items:
        received+=1
        self.queue.put((item.author.name,item.message))
        print('CHAT: received comment from viewer; command='+repr(item.message[:48]),flush=True)
@@ -181,7 +194,7 @@ class Game:
     self.demo_timer=random.uniform(.35,.8)
     person=random.choice(['PixelHero','Sakura','Shadow','Dragon','Gamer07','Moon','Frost','Ruby','Knight99','Nova','FireLord','BlueWolf'])
     if person.lower() not in self.users:self.comment(person,random.choice(['!red','!blue']))
-    else:self.comment(person,random.choices(['!attack','!spawn','!fire','!lightning','!magic','!defend','!bomb'],[30,25,12,10,10,10,3])[0])
+    else:self.comment(person,random.choices(['!attack','!red','!blue','!fire','!lightning','!magic','!defend','!bomb'],[30,15,15,12,10,10,10,3])[0])
   # Background activity only if nobody has issued commands recently.
   # NPCs are real in-game units, never masquerading as viewers or chat users.
   if self.phase=='battle' and self.idle_enabled and not self.demo and time.monotonic()-self.last_viewer>28:
@@ -306,8 +319,8 @@ def game_comment(self,user,cmd):
     'end':1020 if team=='red' else 270,
     'y':392 if c=='!bomb' else 405,
     'kind':3 if c=='!bomb' else 1,'team':team})
- elif c in ('!fire','!magic','!lightning','!spawn') and len(self.units)>units:
-  play({'!fire':'fire','!magic':'arcane','!lightning':'lightning','!spawn':'gate'}[c])
+ elif c in ('!fire','!magic','!lightning','red','blue','!red','!blue') and len(self.units)>units:
+  play({'!fire':'fire','!magic':'arcane','!lightning':'lightning','red':'gate','blue':'gate','!red':'gate','!blue':'gate'}[c])
 Game.comment=game_comment
 base_update=Game.update
 def game_update(self,dt):
@@ -342,12 +355,12 @@ def portrait_ui(game,now):
  txt('RED  vs  BLUE',PW//2,91,28,(242,244,255),True,True)
  panel(24,120,672,166)
  txt('COMMENT TO PLAY!',PW//2,146,31,GOLD,True,True)
- txt('1. JOIN A TEAM:  !red  or  !blue',PW//2,191,21,PALE,True,True)
- txt('2. COMMENT A COMMAND TO ATTACK!',PW//2,232,21,(171,226,255),True,True)
+ txt('TYPE RED OR BLUE TO SEND A WIZARD!',PW//2,191,21,PALE,True,True)
+ txt('EVERY RED / BLUE COMMENT SPAWNS!',PW//2,232,21,(171,226,255),True,True)
  # Always visible command box at top.
  panel(24,302,672,124,(29,47,68))
  txt('TYPE THESE IN LIVE CHAT',PW//2,325,22,GOLD,True,True)
- txt('!attack    !defend    !heal    !spawn',PW//2,362,22,PALE,True,True)
+ txt('red   blue   !attack   !defend   !heal',PW//2,362,22,PALE,True,True)
  txt('!fire    !lightning    !magic    !bomb',PW//2,394,22,PALE,True,True)
  txt(f'ROUND {game.round}     TIME: {max(0,math.ceil(game.timer))}s',PW//2,453,25,GOLD,True,True)
  txt('RED CASTLE',40,481,19,RED,bold=True)

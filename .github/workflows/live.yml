@@ -48,5 +48,11 @@ jobs:
           GAME_PID=$!
           trap 'kill "$GAME_PID" 2>/dev/null || true; tail -n 60 game.log || true' EXIT
           sleep 8
+          echo 'GAME startup messages:'
+          tail -n 20 game.log || true
+          # Show chat status while the video encoder streams.
+          tail -n +1 -f game.log &
+          TAIL_PID=$!
+          trap 'kill "$TAIL_PID" "$GAME_PID" 2>/dev/null || true' EXIT
           if ! kill -0 "$GAME_PID" 2>/dev/null; then tail -n 100 game.log; exit 1; fi
           ffmpeg -hide_banner -loglevel warning -stats -nostdin             -thread_queue_size 512 -f x11grab -framerate 30 -video_size 720x1280 -i :99.0+0,0             -thread_queue_size 512 -f pulse -i castle.monitor             -filter:v 'scale=1080:1920:flags=neighbor,format=yuv420p'             -c:v libx264 -preset veryfast -tune zerolatency -r 30             -b:v 6000k -maxrate 6000k -bufsize 12000k -g 60 -keyint_min 60             -c:a aac -b:a 128k -ar 44100 -ac 2             -t 05:35:00 -f flv             "rtmps://a.rtmps.youtube.com/live2/$YOUTUBE_STREAM_KEY"

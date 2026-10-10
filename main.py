@@ -96,6 +96,9 @@ class Game:
  def comment(self,user,cmd):
   if not isinstance(cmd,str):return
   parts=cmd.lower().strip().split();cmd=parts[0] if parts else ''
+  # Accept both simple chat words and commands beginning with '!'.
+  aliases={'red':'!red','blue':'!blue','attack':'!attack','defend':'!defend','heal':'!heal','fire':'!fire','lightning':'!lightning','magic':'!magic','spawn':'!spawn','bomb':'!bomb','boom':'!bomb','!boom':'!bomb','help':'!help'}
+  cmd=aliases.get(cmd,cmd)
   if cmd not in ('!red','!blue','!attack','!defend','!heal','!fire','!lightning','!magic','!spawn','!bomb','!help'):return
   now=time.monotonic(); key=user.lower()
   if user not in ('NPC','SYSTEM'):
@@ -134,13 +137,38 @@ class Game:
   if self.youtube:self.youtube['running']=False
   state={'running':True};self.youtube=state;self.demo=False;self.mode='YOUTUBE LIVE';self.last_viewer=time.monotonic()
   def poll():
-   try:
-    chat=pytchat.create(video_id=video_id)
-    while state['running'] and chat.is_alive():
-     for item in chat.get().sync():self.queue.put((item.author.name,item.message))
-     time.sleep(.2)
-    chat.terminate()
-   except Exception as ex:self.queue.put(('SYSTEM','Live chat error: '+str(ex)[:70]))
+   import pytchat
+   retry=0
+   print('CHAT: listener starting; video ID '+video_id,flush=True)
+   while state['running']:
+    chat=None
+    try:
+     chat=pytchat.create(video_id=video_id, interruptable=False)
+     print('CHAT: connection opened',flush=True)
+     self.queue.put(('SYSTEM','Chat connection opened'))
+     started=time.monotonic()
+     received=0
+     while state['running'] and chat.is_alive():
+      batch=chat.get()
+      for item in batch.sync():
+       received+=1
+       self.queue.put((item.author.name,item.message))
+       print('CHAT: received comment from viewer; command='+repr(item.message[:48]),flush=True)
+      if time.monotonic()-started>45 and received==0:
+       print('CHAT: still waiting for comments; verify live ID and live-chat availability',flush=True)
+       started=time.monotonic()
+      time.sleep(.3)
+     print('CHAT: disconnected or stream chat not available; retrying',flush=True)
+    except Exception as ex:
+     print('CHAT ERROR: '+repr(ex),flush=True)
+     self.queue.put(('SYSTEM','Chat error, retrying'))
+    finally:
+     if chat is not None:
+      try:chat.terminate()
+      except Exception:pass
+    if not state['running']:break
+    retry+=1
+    time.sleep(min(30,3*retry))
   threading.Thread(target=poll,daemon=True).start()
  def update(self,dt):
   while not self.queue.empty():
@@ -375,6 +403,7 @@ game=Game();running=True;fullscreen=False
 # On GitHub runners there is no keyboard; start chat listener from a secret.
 video_id=os.environ.get('YOUTUBE_VIDEO_ID','').strip()
 if video_id:
+ print('INFO: YOUTUBE_VIDEO_ID present: '+video_id,flush=True)
  game.start_youtube(video_id)
 else:
  print('INFO: YOUTUBE_VIDEO_ID was not set; running slow NPC idle mode',flush=True)
